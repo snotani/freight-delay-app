@@ -38,7 +38,7 @@ export interface AppConfig extends WorkflowConfig, EnvironmentConfig {}
  * @param config - The configuration data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateWorkflowConfig(config: any): config is WorkflowConfig {
+export function validateWorkflowConfig(config: unknown): config is WorkflowConfig {
   if (!config || typeof config !== 'object') {
     throw new Error('Configuration must be an object');
   }
@@ -63,7 +63,7 @@ export function validateWorkflowConfig(config: any): config is WorkflowConfig {
  * @param config - The environment configuration data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateEnvironmentConfig(config: any): config is EnvironmentConfig {
+export function validateEnvironmentConfig(config: unknown): config is EnvironmentConfig {
   if (!config || typeof config !== 'object') {
     throw new Error('Environment configuration must be an object');
   }

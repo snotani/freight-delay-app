@@ -46,7 +46,7 @@ export interface OpenAIResponse {
  */
 export interface SendGridResponse {
   statusCode: number;
-  body: any;
+  body: unknown;
   headers: Record<string, string>;
 }
 
@@ -76,7 +76,7 @@ export interface SendGridEmailRequest {
  * @param notification - The notification data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateDelayNotification(notification: any): notification is DelayNotification {
+export function validateDelayNotification(notification: unknown): notification is DelayNotification {
   if (!notification || typeof notification !== 'object') {
     throw new Error('Notification must be an object');
   }

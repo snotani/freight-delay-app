@@ -6,7 +6,19 @@ import { GoogleMapsResponse } from '../types/traffic-data';
 
 // Mock axios
 vi.mock('axios');
-const mockedAxios = vi.mocked(axios);
+
+// Create typed mock functions
+const mockGet = vi.fn();
+const mockIsAxiosError = vi.fn();
+
+// Override axios methods with our mocks
+(axios.get as any) = mockGet;
+(axios.isAxiosError as any) = mockIsAxiosError;
+
+const mockedAxios = {
+  get: mockGet,
+  isAxiosError: mockIsAxiosError
+};
 
 describe('TrafficMonitoringActivity', () => {
   const validApiKey = 'test-api-key';
@@ -42,7 +54,7 @@ describe('TrafficMonitoringActivity', () => {
     });
 
     it('should throw error with null API key', () => {
-      expect(() => new TrafficMonitoringActivityImpl(null as any)).toThrow('Google Maps API key is required');
+      expect(() => new TrafficMonitoringActivityImpl(null as unknown as string)).toThrow('Google Maps API key is required');
     });
 
     it('should throw error with whitespace-only API key', () => {

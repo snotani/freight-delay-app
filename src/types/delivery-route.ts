@@ -17,7 +17,7 @@ export interface DeliveryRoute {
  * @param route - The route data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateDeliveryRoute(route: any): route is DeliveryRoute {
+export function validateDeliveryRoute(route: unknown): route is DeliveryRoute {
   if (!route || typeof route !== 'object') {
     throw new Error('Route must be an object');
   }

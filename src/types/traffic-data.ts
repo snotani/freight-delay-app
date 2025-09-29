@@ -43,7 +43,7 @@ export interface GoogleMapsResponse {
  * @param data - The traffic data to validate
  * @returns true if valid, throws error if invalid
  */
-export function validateTrafficData(data: any): data is TrafficData {
+export function validateTrafficData(data: unknown): data is TrafficData {
   if (!data || typeof data !== 'object') {
     throw new Error('Traffic data must be an object');
   }

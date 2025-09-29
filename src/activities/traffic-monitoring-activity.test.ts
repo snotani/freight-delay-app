@@ -34,10 +34,10 @@ describe('TrafficMonitoringActivity', () => {
   beforeEach(() => {
     activity = new TrafficMonitoringActivityImpl(validApiKey);
     vi.clearAllMocks();
-    
+
     // Mock console methods to avoid test output noise
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => { });
+    vi.spyOn(console, 'error').mockImplementation(() => { });
   });
 
   afterEach(() => {

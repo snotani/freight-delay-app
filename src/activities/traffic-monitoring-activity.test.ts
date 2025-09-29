@@ -12,8 +12,8 @@ const mockGet = vi.fn();
 const mockIsAxiosError = vi.fn();
 
 // Override axios methods with our mocks
-(axios.get as any) = mockGet;
-(axios.isAxiosError as any) = mockIsAxiosError;
+(axios.get as unknown) = mockGet;
+(axios.isAxiosError as unknown) = mockIsAxiosError;
 
 const mockedAxios = {
   get: mockGet,

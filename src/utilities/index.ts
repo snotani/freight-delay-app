@@ -2,3 +2,4 @@
 export * from './logging';
 export * from './validation';
 export * from './config-loader';
+export * from './config-loader';

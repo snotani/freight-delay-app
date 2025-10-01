@@ -48,19 +48,21 @@ export function validateTrafficData(data: unknown): data is TrafficData {
     throw new Error('Traffic data must be an object');
   }
   
-  if (typeof data.currentTravelTimeMinutes !== 'number' || data.currentTravelTimeMinutes < 0) {
+  const dataObj = data as Record<string, unknown>;
+  
+  if (typeof dataObj.currentTravelTimeMinutes !== 'number' || dataObj.currentTravelTimeMinutes < 0) {
     throw new Error('Current travel time must be a non-negative number');
   }
   
-  if (typeof data.delayMinutes !== 'number') {
+  if (typeof dataObj.delayMinutes !== 'number') {
     throw new Error('Delay minutes must be a number');
   }
   
-  if (!data.trafficConditions || typeof data.trafficConditions !== 'string') {
+  if (!dataObj.trafficConditions || typeof dataObj.trafficConditions !== 'string') {
     throw new Error('Traffic conditions must be a non-empty string');
   }
   
-  if (!(data.retrievedAt instanceof Date) && !Date.parse(data.retrievedAt)) {
+  if (!(dataObj.retrievedAt instanceof Date) && !Date.parse(dataObj.retrievedAt as string)) {
     throw new Error('Retrieved at must be a valid date');
   }
   

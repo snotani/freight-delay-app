@@ -43,15 +43,17 @@ export function validateWorkflowConfig(config: unknown): config is WorkflowConfi
     throw new Error('Configuration must be an object');
   }
   
-  if (typeof config.delayThresholdMinutes !== 'number' || config.delayThresholdMinutes <= 0) {
+  const configObj = config as Record<string, unknown>;
+  
+  if (typeof configObj.delayThresholdMinutes !== 'number' || configObj.delayThresholdMinutes <= 0) {
     throw new Error('Delay threshold must be a positive number');
   }
   
-  if (typeof config.retryAttempts !== 'number' || config.retryAttempts < 0 || !Number.isInteger(config.retryAttempts)) {
+  if (typeof configObj.retryAttempts !== 'number' || configObj.retryAttempts < 0 || !Number.isInteger(configObj.retryAttempts)) {
     throw new Error('Retry attempts must be a non-negative integer');
   }
   
-  if (!config.fallbackMessage || typeof config.fallbackMessage !== 'string' || config.fallbackMessage.trim().length === 0) {
+  if (!configObj.fallbackMessage || typeof configObj.fallbackMessage !== 'string' || configObj.fallbackMessage.trim().length === 0) {
     throw new Error('Fallback message must be a non-empty string');
   }
   
@@ -68,33 +70,35 @@ export function validateEnvironmentConfig(config: unknown): config is Environmen
     throw new Error('Environment configuration must be an object');
   }
   
-  if (!config.googleMapsApiKey || typeof config.googleMapsApiKey !== 'string' || config.googleMapsApiKey.trim().length === 0) {
+  const configObj = config as Record<string, unknown>;
+  
+  if (!configObj.googleMapsApiKey || typeof configObj.googleMapsApiKey !== 'string' || configObj.googleMapsApiKey.trim().length === 0) {
     throw new Error('Google Maps API key must be a non-empty string');
   }
   
-  if (!config.openaiApiKey || typeof config.openaiApiKey !== 'string' || config.openaiApiKey.trim().length === 0) {
+  if (!configObj.openaiApiKey || typeof configObj.openaiApiKey !== 'string' || configObj.openaiApiKey.trim().length === 0) {
     throw new Error('OpenAI API key must be a non-empty string');
   }
   
-  if (!config.sendgridApiKey || typeof config.sendgridApiKey !== 'string' || config.sendgridApiKey.trim().length === 0) {
+  if (!configObj.sendgridApiKey || typeof configObj.sendgridApiKey !== 'string' || configObj.sendgridApiKey.trim().length === 0) {
     throw new Error('SendGrid API key must be a non-empty string');
   }
   
-  if (!config.senderEmail || typeof config.senderEmail !== 'string') {
+  if (!configObj.senderEmail || typeof configObj.senderEmail !== 'string') {
     throw new Error('Sender email must be a string');
   }
   
   // Basic email validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(config.senderEmail)) {
+  if (!emailRegex.test(configObj.senderEmail)) {
     throw new Error('Sender email must be a valid email address');
   }
   
-  if (config.temporalServerUrl && (typeof config.temporalServerUrl !== 'string' || config.temporalServerUrl.trim().length === 0)) {
+  if (configObj.temporalServerUrl && (typeof configObj.temporalServerUrl !== 'string' || configObj.temporalServerUrl.trim().length === 0)) {
     throw new Error('Temporal server URL must be a non-empty string if provided');
   }
   
-  if (config.senderName && (typeof config.senderName !== 'string' || config.senderName.trim().length === 0)) {
+  if (configObj.senderName && (typeof configObj.senderName !== 'string' || configObj.senderName.trim().length === 0)) {
     throw new Error('Sender name must be a non-empty string if provided');
   }
   

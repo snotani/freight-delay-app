@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { DelayNotification, validateDelayNotification } from '../types/delay-notification';
 import { MessageGenerationActivity } from '../types/activity-interfaces';
+import { createLogger, createTimer, Logger } from '../utilities/logging';
 
 /**
  * Message generation activity implementation using OpenAI API
@@ -9,21 +10,27 @@ import { MessageGenerationActivity } from '../types/activity-interfaces';
 export class MessageGenerationActivityImpl implements MessageGenerationActivity {
   private openai: OpenAI;
   private fallbackMessage: string;
+  private readonly logger: Logger;
 
   constructor(apiKey?: string) {
+    this.logger = createLogger('MessageGeneration');
+    
     // Initialize OpenAI client with API key from environment or parameter
     const openaiApiKey = apiKey || process.env.OPENAI_API_KEY;
     
     if (!openaiApiKey) {
-      console.warn('[MessageGeneration] No OpenAI API key provided - fallback mode only');
+      this.logger.warn('No OpenAI API key provided - fallback mode only');
       this.openai = null as any; // Will use fallback for all requests
     } else {
       try {
         this.openai = new OpenAI({
           apiKey: openaiApiKey,
         });
+        this.logger.info('OpenAI client initialized successfully');
       } catch (error) {
-        console.warn('[MessageGeneration] Failed to initialize OpenAI client - fallback mode only');
+        this.logger.warn('Failed to initialize OpenAI client - fallback mode only', {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
         this.openai = null as any;
       }
     }
@@ -49,46 +56,75 @@ The Delivery Team`;
    * @returns Promise resolving to generated message string
    */
   async generateDelayMessage(notification: DelayNotification): Promise<string> {
-    const startTime = Date.now();
+    const timer = createTimer(this.logger, 'generateDelayMessage');
     
     try {
       // Validate input notification data
       validateDelayNotification(notification);
 
-      console.log(`[MessageGeneration] Starting message generation for customer ${notification.customerId}`);
-      console.log(`[MessageGeneration] Route: ${notification.route.origin} → ${notification.route.destination}`);
-      console.log(`[MessageGeneration] Delay: ${notification.delayMinutes} minutes`);
+      this.logger.info('Starting message generation', {
+        customerId: notification.customerId,
+        routeId: notification.route.routeId,
+        origin: notification.route.origin,
+        destination: notification.route.destination,
+        delayMinutes: notification.delayMinutes
+      });
 
       // If no OpenAI client available, use fallback immediately
       if (!this.openai) {
-        console.log('[MessageGeneration] No OpenAI client available, using fallback message');
-        return this.generateFallbackMessage(notification);
+        this.logger.info('No OpenAI client available, using fallback message');
+        const fallbackMessage = this.generateFallbackMessage(notification);
+        
+        timer.complete(true, {
+          customerId: notification.customerId,
+          messageSource: 'fallback',
+          messageLength: fallbackMessage.length
+        });
+        
+        return fallbackMessage;
       }
 
       try {
         // Generate AI message using OpenAI API
         const aiMessage = await this.generateAIMessage(notification);
         
-        const processingTime = Date.now() - startTime;
-        console.log(`[MessageGeneration] AI message generated successfully in ${processingTime}ms`);
-        console.log(`[MessageGeneration] Message length: ${aiMessage.length} characters`);
+        timer.complete(true, {
+          customerId: notification.customerId,
+          messageSource: 'ai',
+          messageLength: aiMessage.length
+        });
         
         return aiMessage;
 
       } catch (aiError) {
-        console.warn('[MessageGeneration] AI message generation failed, using fallback:', aiError);
-        return this.generateFallbackMessage(notification);
+        this.logger.warn('AI message generation failed, using fallback', {
+          customerId: notification.customerId,
+          error: aiError instanceof Error ? aiError.message : 'Unknown error'
+        });
+        
+        const fallbackMessage = this.generateFallbackMessage(notification);
+        
+        timer.complete(true, {
+          customerId: notification.customerId,
+          messageSource: 'fallback_after_ai_failure',
+          messageLength: fallbackMessage.length
+        });
+        
+        return fallbackMessage;
       }
 
     } catch (error) {
-      const processingTime = Date.now() - startTime;
-      console.error(`[MessageGeneration] Error generating message after ${processingTime}ms:`, error);
+      timer.complete(false);
+      this.logger.error('Failed to generate message', error as Error, {
+        customerId: notification?.customerId,
+        routeId: notification?.route?.routeId
+      });
       
       // Even on validation errors, try to provide a basic fallback
       try {
         return this.generateFallbackMessage(notification);
       } catch (fallbackError) {
-        console.error('[MessageGeneration] Fallback message generation also failed:', fallbackError);
+        this.logger.error('Fallback message generation also failed', fallbackError as Error);
         throw error; // Re-throw original error
       }
     }
@@ -102,7 +138,13 @@ The Delivery Team`;
   private async generateAIMessage(notification: DelayNotification): Promise<string> {
     const prompt = this.buildPrompt(notification);
     
-    console.log('[MessageGeneration] Calling OpenAI API with gpt-4o-mini model');
+    this.logger.debug('Calling OpenAI API', {
+      model: 'gpt-4o-mini',
+      customerId: notification.customerId,
+      promptLength: prompt.length
+    });
+    
+    const apiTimer = createTimer(this.logger, 'OpenAI API');
     
     const response = await this.openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -120,9 +162,23 @@ The Delivery Team`;
       temperature: 0.7,
     });
 
+    const apiDuration = apiTimer.complete(true);
+
     // Log API usage for monitoring
     if (response.usage) {
-      console.log(`[MessageGeneration] OpenAI API usage - Prompt: ${response.usage.prompt_tokens}, Completion: ${response.usage.completion_tokens}, Total: ${response.usage.total_tokens} tokens`);
+      this.logger.info('OpenAI API call completed', {
+        customerId: notification.customerId,
+        promptTokens: response.usage.prompt_tokens,
+        completionTokens: response.usage.completion_tokens,
+        totalTokens: response.usage.total_tokens,
+        duration: apiDuration
+      });
+
+      this.logger.apiCall('OpenAI', apiDuration, true, 200, {
+        customerId: notification.customerId,
+        model: 'gpt-4o-mini',
+        totalTokens: response.usage.total_tokens
+      });
     }
 
     const generatedMessage = response.choices[0]?.message?.content?.trim();
@@ -133,6 +189,12 @@ The Delivery Team`;
 
     // Validate message quality
     this.validateGeneratedMessage(generatedMessage, notification);
+    
+    this.logger.info('AI message generated and validated', {
+      customerId: notification.customerId,
+      messageLength: generatedMessage.length,
+      duration: apiDuration
+    });
     
     return generatedMessage;
   }
@@ -171,7 +233,10 @@ Please write the complete email message:`;
    * @returns Formatted fallback message
    */
   private generateFallbackMessage(notification: DelayNotification): string {
-    console.log('[MessageGeneration] Generating fallback message');
+    this.logger.debug('Generating fallback message', {
+      customerId: notification.customerId,
+      delayMinutes: notification.delayMinutes
+    });
     
     const { route, delayMinutes } = notification;
     
@@ -186,7 +251,11 @@ Please write the complete email message:`;
       message += `\n\nRoute Reference: ${route.routeId}`;
     }
 
-    console.log(`[MessageGeneration] Fallback message generated (${message.length} characters)`);
+    this.logger.info('Fallback message generated', {
+      customerId: notification.customerId,
+      messageLength: message.length,
+      routeId: route.routeId
+    });
     
     return message;
   }
@@ -197,22 +266,39 @@ Please write the complete email message:`;
    * @param notification - Original notification data for context
    */
   private validateGeneratedMessage(message: string, notification: DelayNotification): void {
+    const validationResults = {
+      lengthValid: true,
+      delayMentioned: false,
+      professionalTone: false,
+      warnings: [] as string[]
+    };
+
     // Check minimum length
     if (message.length < 50) {
+      validationResults.lengthValid = false;
       throw new Error('Generated message is too short');
     }
 
     // Check maximum length
     if (message.length > 1000) {
-      console.warn('[MessageGeneration] Generated message is quite long, consider reviewing');
+      validationResults.warnings.push('Message is quite long');
+      this.logger.warn('Generated message is quite long, consider reviewing', {
+        customerId: notification.customerId,
+        messageLength: message.length
+      });
     }
 
     // Check if delay time is mentioned
     const delayMentioned = message.includes(notification.delayMinutes.toString()) || 
                           message.toLowerCase().includes('delay');
+    validationResults.delayMentioned = delayMentioned;
     
     if (!delayMentioned) {
-      console.warn('[MessageGeneration] Generated message may not clearly mention the delay');
+      validationResults.warnings.push('Delay not clearly mentioned');
+      this.logger.warn('Generated message may not clearly mention the delay', {
+        customerId: notification.customerId,
+        delayMinutes: notification.delayMinutes
+      });
     }
 
     // Check for professional tone indicators
@@ -220,12 +306,20 @@ Please write the complete email message:`;
     const hasProfessionalTone = professionalIndicators.some(indicator => 
       message.toLowerCase().includes(indicator)
     );
+    validationResults.professionalTone = hasProfessionalTone;
 
     if (!hasProfessionalTone) {
-      console.warn('[MessageGeneration] Generated message may lack professional apologetic tone');
+      validationResults.warnings.push('May lack professional apologetic tone');
+      this.logger.warn('Generated message may lack professional apologetic tone', {
+        customerId: notification.customerId
+      });
     }
 
-    console.log('[MessageGeneration] Message validation completed successfully');
+    this.logger.debug('Message validation completed', {
+      customerId: notification.customerId,
+      messageLength: message.length,
+      validationResults
+    });
   }
 
   /**
@@ -238,7 +332,9 @@ Please write the complete email message:`;
     }
     
     this.fallbackMessage = newFallbackMessage;
-    console.log('[MessageGeneration] Fallback message template updated');
+    this.logger.info('Fallback message template updated', {
+      messageLength: newFallbackMessage.length
+    });
   }
 }
 

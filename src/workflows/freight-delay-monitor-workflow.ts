@@ -149,14 +149,16 @@ export async function freightDelayMonitorWorkflow(
   input: FreightDelayMonitorInput
 ): Promise<FreightDelayMonitorResult> {
   const { route, customer, config } = input;
+  const workflowStartTime = Date.now();
   
-  log.info('Starting freight delay monitoring workflow', {
+  log.info('🚀 Starting freight delay monitoring workflow', {
     routeId: route.routeId,
     customerId: customer.customerId,
     origin: route.origin,
     destination: route.destination,
     baselineTime: route.baselineTimeMinutes,
-    delayThreshold: config.delayThresholdMinutes
+    delayThreshold: config.delayThresholdMinutes,
+    workflowStartTime: new Date().toISOString()
   });
 
   const result: FreightDelayMonitorResult = {
@@ -168,58 +170,91 @@ export async function freightDelayMonitorWorkflow(
 
   try {
     // Step 1: Monitor traffic conditions
-    log.info('Step 1: Retrieving current traffic data', { routeId: route.routeId });
+    const step1StartTime = Date.now();
+    log.info('📍 Step 1: Retrieving current traffic data', { 
+      routeId: route.routeId,
+      stepNumber: 1,
+      stepName: 'TrafficMonitoring'
+    });
     
     const trafficData = await getTrafficData(route);
+    const step1Duration = Date.now() - step1StartTime;
     
-    log.info('Traffic data retrieved successfully', {
+    log.info('✅ Step 1: Traffic data retrieved successfully', {
       routeId: route.routeId,
+      stepNumber: 1,
+      stepDuration: step1Duration,
       currentTravelTime: trafficData.currentTravelTimeMinutes,
       trafficConditions: trafficData.trafficConditions,
-      retrievedAt: trafficData.retrievedAt
+      retrievedAt: trafficData.retrievedAt,
+      success: true
     });
 
     // Step 2: Calculate delay and check threshold
-    log.info('Step 2: Calculating delay and checking threshold', {
+    const step2StartTime = Date.now();
+    log.info('🔢 Step 2: Calculating delay and checking threshold', {
       routeId: route.routeId,
+      stepNumber: 2,
+      stepName: 'DelayAnalysis',
       currentTime: trafficData.currentTravelTimeMinutes,
       baselineTime: route.baselineTimeMinutes
     });
 
     const delayMinutes = await calculateDelay(trafficData, route.baselineTimeMinutes);
     result.delayMinutes = delayMinutes;
-
-    log.info('Delay calculation completed', {
-      routeId: route.routeId,
-      delayMinutes,
-      threshold: config.delayThresholdMinutes
-    });
+    const step2Duration = Date.now() - step2StartTime;
 
     // Check if delay exceeds threshold (simple logic, no need for activity)
     const exceedsDelayThreshold = delayMinutes > config.delayThresholdMinutes;
     result.delayDetected = exceedsDelayThreshold;
+    const excessMinutes = exceedsDelayThreshold ? delayMinutes - config.delayThresholdMinutes : 0;
+    const delayPercentage = config.delayThresholdMinutes > 0 ? Math.round((delayMinutes / config.delayThresholdMinutes) * 100) : 0;
+
+    log.info('✅ Step 2: Delay analysis completed', {
+      routeId: route.routeId,
+      stepNumber: 2,
+      stepDuration: step2Duration,
+      delayMinutes,
+      threshold: config.delayThresholdMinutes,
+      exceedsThreshold: exceedsDelayThreshold,
+      excessMinutes,
+      delayPercentage,
+      success: true
+    });
 
     if (!exceedsDelayThreshold) {
-      log.info('Delay does not exceed threshold - no notification needed', {
+      const workflowDuration = Date.now() - workflowStartTime;
+      log.info('🎯 Workflow completed: Delay within acceptable limits', {
         routeId: route.routeId,
+        customerId: customer.customerId,
         delayMinutes,
-        threshold: config.delayThresholdMinutes
+        threshold: config.delayThresholdMinutes,
+        notificationRequired: false,
+        workflowDuration,
+        completedAt: new Date().toISOString(),
+        success: true
       });
       
       result.completedAt = new Date();
       return result;
     }
 
-    log.info('Delay exceeds threshold - proceeding with notification', {
+    log.info('⚠️ Delay exceeds threshold - proceeding with notification', {
       routeId: route.routeId,
+      customerId: customer.customerId,
       delayMinutes,
-      threshold: config.delayThresholdMinutes
+      threshold: config.delayThresholdMinutes,
+      excessMinutes,
+      notificationRequired: true
     });
 
     // Step 3: Generate personalized delay message
-    log.info('Step 3: Generating personalized delay message', {
+    const step3StartTime = Date.now();
+    log.info('💬 Step 3: Generating personalized delay message', {
       routeId: route.routeId,
-      customerId: customer.customerId
+      customerId: customer.customerId,
+      stepNumber: 3,
+      stepName: 'MessageGeneration'
     });
 
     const delayNotification: DelayNotification = {
@@ -231,18 +266,33 @@ export async function freightDelayMonitorWorkflow(
     };
 
     let generatedMessage: string;
+    let messageSource: string;
     try {
       generatedMessage = await generateDelayMessage(delayNotification);
-      log.info('AI message generated successfully', {
+      messageSource = 'ai';
+      const step3Duration = Date.now() - step3StartTime;
+      
+      log.info('✅ Step 3: AI message generated successfully', {
         routeId: route.routeId,
         customerId: customer.customerId,
-        messageLength: generatedMessage.length
+        stepNumber: 3,
+        stepDuration: step3Duration,
+        messageLength: generatedMessage.length,
+        messageSource,
+        success: true
       });
     } catch (error) {
-      log.warn('AI message generation failed, using fallback message', {
+      const step3Duration = Date.now() - step3StartTime;
+      messageSource = 'fallback';
+      
+      log.warn('⚠️ Step 3: AI message generation failed, using fallback', {
         routeId: route.routeId,
         customerId: customer.customerId,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        stepNumber: 3,
+        stepDuration: step3Duration,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        messageSource,
+        fallbackUsed: true
       });
       
       // Use fallback message from configuration
@@ -250,68 +300,110 @@ export async function freightDelayMonitorWorkflow(
         .replace('{delayMinutes}', delayMinutes.toString())
         .replace('{origin}', route.origin)
         .replace('{destination}', route.destination);
+        
+      log.info('✅ Step 3: Fallback message generated', {
+        routeId: route.routeId,
+        customerId: customer.customerId,
+        stepNumber: 3,
+        stepDuration: step3Duration,
+        messageLength: generatedMessage.length,
+        messageSource,
+        success: true
+      });
     }
 
     // Update notification with generated message
     delayNotification.message = generatedMessage;
 
     // Step 4: Send email notification
-    log.info('Step 4: Sending email notification', {
+    const step4StartTime = Date.now();
+    log.info('📧 Step 4: Sending email notification', {
       routeId: route.routeId,
       customerId: customer.customerId,
-      customerEmail: customer.customerEmail
+      customerEmail: customer.customerEmail,
+      stepNumber: 4,
+      stepName: 'EmailNotification',
+      messageLength: generatedMessage.length,
+      messageSource
     });
 
     const notificationSuccess = await sendEmailNotification(delayNotification);
     result.notificationSent = notificationSuccess;
+    const step4Duration = Date.now() - step4StartTime;
 
     if (notificationSuccess) {
-      log.info('Email notification sent successfully', {
+      log.info('✅ Step 4: Email notification sent successfully', {
         routeId: route.routeId,
         customerId: customer.customerId,
         customerEmail: customer.customerEmail,
-        delayMinutes
+        stepNumber: 4,
+        stepDuration: step4Duration,
+        delayMinutes,
+        messageSource,
+        success: true
       });
     } else {
-      log.error('Failed to send email notification', {
+      log.error('❌ Step 4: Failed to send email notification', {
         routeId: route.routeId,
         customerId: customer.customerId,
-        customerEmail: customer.customerEmail
+        customerEmail: customer.customerEmail,
+        stepNumber: 4,
+        stepDuration: step4Duration,
+        success: false
       });
       
       result.errorMessage = 'Failed to send email notification after all retry attempts';
     }
 
   } catch (error) {
+    const workflowDuration = Date.now() - workflowStartTime;
     const errorMessage = error instanceof Error ? error.message : 'Unknown workflow error';
     
-    log.error('Workflow execution failed', {
+    log.error('💥 Workflow execution failed', {
       routeId: route.routeId,
       customerId: customer.customerId,
       error: errorMessage,
-      errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+      errorType: error instanceof Error ? error.constructor.name : 'Unknown',
+      workflowDuration,
+      failedAt: new Date().toISOString(),
+      success: false
     });
 
     result.errorMessage = errorMessage;
+    result.completedAt = new Date();
     
     // Re-throw as ApplicationFailure for proper Temporal error handling
     throw ApplicationFailure.create({
       message: `Freight delay monitoring workflow failed: ${errorMessage}`,
       type: 'WorkflowExecutionError',
       nonRetryable: false,
-      details: [{ routeId: route.routeId, customerId: customer.customerId }]
+      details: [{ 
+        routeId: route.routeId, 
+        customerId: customer.customerId,
+        workflowDuration,
+        failedAt: result.completedAt.toISOString()
+      }]
     });
   }
 
   result.completedAt = new Date();
+  const workflowDuration = Date.now() - workflowStartTime;
   
-  log.info('Freight delay monitoring workflow completed', {
+  log.info('🎉 Freight delay monitoring workflow completed successfully', {
     routeId: route.routeId,
     customerId: customer.customerId,
     delayDetected: result.delayDetected,
     delayMinutes: result.delayMinutes,
     notificationSent: result.notificationSent,
-    completedAt: result.completedAt
+    workflowDuration,
+    completedAt: result.completedAt.toISOString(),
+    success: true,
+    summary: {
+      stepsCompleted: result.notificationSent ? 4 : 2,
+      totalSteps: 4,
+      notificationRequired: result.delayDetected,
+      notificationDelivered: result.notificationSent
+    }
   });
 
   return result;

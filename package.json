@@ -16,7 +16,14 @@
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "clean": "rimraf dist",
-    "prebuild": "npm run clean"
+    "prebuild": "npm run clean",
+    "config:help": "ts-node src/cli/config-cli.ts help",
+    "config:validate": "ts-node src/cli/config-cli.ts validate",
+    "config:load": "ts-node src/cli/config-cli.ts load",
+    "config:check": "ts-node src/cli/config-cli.ts check",
+    "config:example": "ts-node src/cli/config-cli.ts example",
+    "examples": "ts-node src/examples/workflow-execution-example.ts",
+    "demo": "ts-node src/examples/complete-workflow-demo.ts"
   },
   "keywords": [
     "temporal",

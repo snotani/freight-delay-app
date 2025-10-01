@@ -1,6 +1,7 @@
 import sgMail from '@sendgrid/mail';
 import { DelayNotification, SendGridResponse, validateDelayNotification } from '../types/delay-notification';
 import { NotificationActivity } from '../types/activity-interfaces';
+import { createLogger, createTimer, Logger } from '../utilities/logging';
 
 /**
  * SendGrid email notification activity implementation
@@ -10,8 +11,11 @@ export class SendGridNotificationActivity implements NotificationActivity {
   private apiKey: string;
   private fromEmail: string;
   private fromName: string;
+  private readonly logger: Logger;
 
   constructor(apiKey?: string, fromEmail?: string, fromName?: string) {
+    this.logger = createLogger('NotificationActivity');
+    
     this.apiKey = apiKey || process.env.SENDGRID_API_KEY || '';
     this.fromEmail = fromEmail || process.env.FROM_EMAIL || 'noreply@freightmonitor.com';
     this.fromName = fromName || process.env.FROM_NAME || 'Freight Delay Monitor';
@@ -21,6 +25,12 @@ export class SendGridNotificationActivity implements NotificationActivity {
     }
     
     sgMail.setApiKey(this.apiKey);
+    
+    this.logger.info('SendGrid notification activity initialized', {
+      fromEmail: this.fromEmail,
+      fromName: this.fromName,
+      hasApiKey: !!this.apiKey
+    });
   }
 
   /**
@@ -30,14 +40,22 @@ export class SendGridNotificationActivity implements NotificationActivity {
    * @throws Error if notification cannot be sent after retries
    */
   async sendEmailNotification(notification: DelayNotification): Promise<boolean> {
+    const timer = createTimer(this.logger, 'sendEmailNotification');
+    
     try {
       // Validate notification data
       validateDelayNotification(notification);
       
-      console.log(`[NotificationActivity] Preparing to send email notification to ${notification.customerEmail} for route ${notification.route.routeId}`);
+      this.logger.info('Preparing to send email notification', {
+        customerId: notification.customerId,
+        customerEmail: notification.customerEmail,
+        routeId: notification.route.routeId,
+        delayMinutes: notification.delayMinutes
+      });
       
       // Create HTML email template
       const htmlContent = this.generateEmailTemplate(notification);
+      const textContent = this.generatePlainTextContent(notification);
       
       // Prepare SendGrid email payload
       const emailData = {
@@ -51,33 +69,97 @@ export class SendGridNotificationActivity implements NotificationActivity {
         },
         subject: `Delivery Delay Update - Route ${notification.route.routeId}`,
         html: htmlContent,
-        text: this.generatePlainTextContent(notification)
+        text: textContent
       };
 
-      console.log(`[NotificationActivity] Sending email via SendGrid API to ${notification.customerEmail}`);
+      this.logger.debug('Sending email via SendGrid API', {
+        customerId: notification.customerId,
+        customerEmail: notification.customerEmail,
+        subject: emailData.subject,
+        htmlLength: htmlContent.length,
+        textLength: textContent.length
+      });
       
       // Send email using SendGrid
+      const apiTimer = createTimer(this.logger, 'SendGrid API');
       const response = await sgMail.send(emailData);
+      const apiDuration = apiTimer.complete(true);
       
       // Log successful delivery
       const messageId = response[0]?.headers?.['x-message-id'] || 'unknown';
-      console.log(`[NotificationActivity] Email sent successfully. Message ID: ${messageId}, Status: ${response[0]?.statusCode}`);
+      const statusCode = response[0]?.statusCode || 0;
+      
+      this.logger.apiCall('SendGrid', apiDuration, true, statusCode, {
+        customerId: notification.customerId,
+        customerEmail: notification.customerEmail,
+        messageId
+      });
+
+      this.logger.notificationStatus(
+        notification.customerId,
+        notification.customerEmail,
+        true,
+        timer.getElapsed(),
+        messageId,
+        {
+          routeId: notification.route.routeId,
+          delayMinutes: notification.delayMinutes,
+          statusCode
+        }
+      );
       
       // Update notification with sent timestamp
       notification.sentAt = new Date();
       
+      timer.complete(true, {
+        customerId: notification.customerId,
+        messageId,
+        statusCode
+      });
+      
       return true;
       
     } catch (error) {
-      console.error(`[NotificationActivity] Failed to send email notification:`, error);
+      const duration = timer.complete(false);
+      
+      this.logger.error('Failed to send email notification', error as Error, {
+        customerId: notification?.customerId,
+        customerEmail: notification?.customerEmail,
+        routeId: notification?.route?.routeId,
+        duration
+      });
       
       // Check if it's a retryable error
       if (this.isRetryableError(error)) {
-        const errorMessage = error instanceof Error ? error.message : (error.message || 'Unknown error');
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        
+        this.logger.warn('Retryable error occurred, will retry', {
+          customerId: notification?.customerId,
+          errorMessage,
+          errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+        });
+        
         throw new Error(`Retryable email sending error: ${errorMessage}`);
       } else {
         // Non-retryable error - log and return false
-        console.error(`[NotificationActivity] Non-retryable error occurred. Email not sent.`);
+        this.logger.error('Non-retryable error occurred, email not sent', undefined, {
+          customerId: notification?.customerId,
+          customerEmail: notification?.customerEmail,
+          errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+        });
+
+        this.logger.notificationStatus(
+          notification?.customerId || 'unknown',
+          notification?.customerEmail || 'unknown',
+          false,
+          duration,
+          undefined,
+          {
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            errorType: error instanceof Error ? error.constructor.name : 'Unknown'
+          }
+        );
+        
         return false;
       }
     }

@@ -1,11 +1,17 @@
 import { TrafficData, validateTrafficData } from '../types/traffic-data';
 import { DelayAnalysisActivity } from '../types/activity-interfaces';
+import { createLogger, createTimer, Logger } from '../utilities/logging';
 
 /**
  * Delay analysis activity implementation
  * Calculates delays and determines if they exceed configured thresholds
  */
 export class DelayAnalysisActivityImpl implements DelayAnalysisActivity {
+  private readonly logger: Logger;
+
+  constructor() {
+    this.logger = createLogger('DelayAnalysis');
+  }
   
   /**
    * Calculates the delay in minutes based on traffic data and baseline
@@ -14,7 +20,7 @@ export class DelayAnalysisActivityImpl implements DelayAnalysisActivity {
    * @returns Promise resolving to delay in minutes
    */
   async calculateDelay(trafficData: TrafficData, baseline: number): Promise<number> {
-    const startTime = Date.now();
+    const timer = createTimer(this.logger, 'calculateDelay');
     
     try {
       // Validate input parameters
@@ -24,30 +30,45 @@ export class DelayAnalysisActivityImpl implements DelayAnalysisActivity {
         throw new Error('Baseline travel time must be a positive number');
       }
 
-      console.log(`[DelayAnalysis] Starting delay calculation`);
-      console.log(`[DelayAnalysis] Current travel time: ${trafficData.currentTravelTimeMinutes} minutes`);
-      console.log(`[DelayAnalysis] Baseline travel time: ${baseline} minutes`);
+      this.logger.info('Starting delay calculation', {
+        currentTravelTime: trafficData.currentTravelTimeMinutes,
+        baselineTime: baseline,
+        trafficConditions: trafficData.trafficConditions
+      });
 
       // Calculate delay by comparing current travel time against baseline
       const calculatedDelay = Math.max(0, trafficData.currentTravelTimeMinutes - baseline);
       
-      const processingTime = Date.now() - startTime;
-      console.log(`[DelayAnalysis] Delay calculation completed in ${processingTime}ms`);
-      console.log(`[DelayAnalysis] Calculated delay: ${calculatedDelay} minutes`);
-      
       // Verify calculation matches traffic data delay (should be consistent)
       if (Math.abs(calculatedDelay - trafficData.delayMinutes) > 1) {
-        console.warn(`[DelayAnalysis] Delay mismatch detected - calculated: ${calculatedDelay}, traffic data: ${trafficData.delayMinutes}`);
+        this.logger.warn('Delay calculation mismatch detected', {
+          calculatedDelay,
+          trafficDataDelay: trafficData.delayMinutes,
+          difference: Math.abs(calculatedDelay - trafficData.delayMinutes)
+        });
       }
 
-      // Log delay severity classification
-      this.logDelaySeverity(calculatedDelay);
+      // Log delay analysis results
+      this.logger.delayAnalysis(calculatedDelay, 0, false, {
+        currentTravelTime: trafficData.currentTravelTimeMinutes,
+        baselineTime: baseline,
+        trafficConditions: trafficData.trafficConditions
+      });
+
+      timer.complete(true, {
+        calculatedDelay,
+        currentTravelTime: trafficData.currentTravelTimeMinutes,
+        baselineTime: baseline
+      });
 
       return calculatedDelay;
 
     } catch (error) {
-      const processingTime = Date.now() - startTime;
-      console.error(`[DelayAnalysis] Error calculating delay after ${processingTime}ms:`, error);
+      timer.complete(false);
+      this.logger.error('Failed to calculate delay', error as Error, {
+        currentTravelTime: trafficData?.currentTravelTimeMinutes,
+        baselineTime: baseline
+      });
       throw error;
     }
   }
@@ -59,6 +80,8 @@ export class DelayAnalysisActivityImpl implements DelayAnalysisActivity {
    * @returns true if delay exceeds threshold, false otherwise
    */
   exceedsThreshold(delay: number, threshold: number): boolean {
+    const timer = createTimer(this.logger, 'exceedsThreshold');
+    
     try {
       // Validate input parameters
       if (typeof delay !== 'number' || delay < 0 || isNaN(delay)) {
@@ -69,60 +92,37 @@ export class DelayAnalysisActivityImpl implements DelayAnalysisActivity {
         throw new Error('Threshold must be a positive number');
       }
 
-      console.log(`[DelayAnalysis] Checking threshold compliance`);
-      console.log(`[DelayAnalysis] Delay: ${delay} minutes, Threshold: ${threshold} minutes`);
-
       const exceedsThreshold = delay > threshold;
-      
-      if (exceedsThreshold) {
-        console.log(`[DelayAnalysis] ⚠️  Delay EXCEEDS threshold by ${delay - threshold} minutes - notification required`);
-      } else {
-        console.log(`[DelayAnalysis] ✅ Delay is within acceptable limits - no notification needed`);
-      }
-
-      // Log threshold comparison details
       const thresholdPercentage = threshold > 0 ? Math.round((delay / threshold) * 100) : 0;
-      console.log(`[DelayAnalysis] Delay is ${thresholdPercentage}% of threshold`);
+      const excessMinutes = exceedsThreshold ? delay - threshold : 0;
+
+      // Use the specialized delay analysis logging
+      this.logger.delayAnalysis(delay, threshold, exceedsThreshold, {
+        excessMinutes,
+        thresholdPercentage
+      });
+
+      timer.complete(true, {
+        delay,
+        threshold,
+        exceedsThreshold,
+        thresholdPercentage,
+        excessMinutes
+      });
 
       return exceedsThreshold;
 
     } catch (error) {
-      console.error(`[DelayAnalysis] Error checking threshold:`, error);
+      timer.complete(false);
+      this.logger.error('Failed to check threshold', error as Error, {
+        delay,
+        threshold
+      });
       throw error;
     }
   }
 
-  /**
-   * Logs delay severity classification for monitoring purposes
-   * @param delayMinutes - The calculated delay in minutes
-   */
-  private logDelaySeverity(delayMinutes: number): void {
-    let severity: string;
-    let impact: string;
 
-    if (delayMinutes === 0) {
-      severity = 'NONE';
-      impact = 'On-time delivery expected';
-    } else if (delayMinutes <= 10) {
-      severity = 'MINIMAL';
-      impact = 'Minor delay, minimal customer impact';
-    } else if (delayMinutes < 20) {
-      severity = 'LOW';
-      impact = 'Low delay, customer awareness recommended';
-    } else if (delayMinutes <= 30) {
-      severity = 'MODERATE';
-      impact = 'Moderate delay, customer notification likely needed';
-    } else if (delayMinutes <= 60) {
-      severity = 'HIGH';
-      impact = 'Significant delay, customer notification required';
-    } else {
-      severity = 'CRITICAL';
-      impact = 'Critical delay, immediate customer notification and escalation needed';
-    }
-
-    console.log(`[DelayAnalysis] Delay severity: ${severity} (${delayMinutes} minutes)`);
-    console.log(`[DelayAnalysis] Impact assessment: ${impact}`);
-  }
 }
 
 /**

@@ -29,23 +29,25 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
+    "@temporalio/activity": "^1.8.0",
     "@temporalio/client": "^1.8.0",
     "@temporalio/worker": "^1.8.0",
     "@temporalio/workflow": "^1.8.0",
-    "@temporalio/activity": "^1.8.0",
     "axios": "^1.6.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "openai": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.8.0",
     "@typescript-eslint/eslint-plugin": "^6.7.0",
     "@typescript-eslint/parser": "^6.7.0",
+    "@vitest/coverage-v8": "^0.34.0",
     "eslint": "^8.50.0",
     "rimraf": "^5.0.5",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.0",
-    "vitest": "^0.34.0",
-    "@vitest/coverage-v8": "^0.34.0"
+    "vitest": "^0.34.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -81,33 +81,35 @@ export function validateDelayNotification(notification: unknown): notification i
     throw new Error('Notification must be an object');
   }
   
-  if (!notification.customerId || typeof notification.customerId !== 'string' || notification.customerId.trim().length === 0) {
+  const notif = notification as any;
+  
+  if (!notif.customerId || typeof notif.customerId !== 'string' || notif.customerId.trim().length === 0) {
     throw new Error('Customer ID must be a non-empty string');
   }
   
-  if (!notification.customerEmail || typeof notification.customerEmail !== 'string') {
+  if (!notif.customerEmail || typeof notif.customerEmail !== 'string') {
     throw new Error('Customer email must be a string');
   }
   
   // Basic email validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(notification.customerEmail)) {
+  if (!emailRegex.test(notif.customerEmail)) {
     throw new Error('Customer email must be a valid email address');
   }
   
-  if (!notification.route || typeof notification.route !== 'object') {
+  if (!notif.route || typeof notif.route !== 'object') {
     throw new Error('Route must be provided');
   }
   
-  if (typeof notification.delayMinutes !== 'number' || notification.delayMinutes < 0) {
+  if (typeof notif.delayMinutes !== 'number' || notif.delayMinutes < 0) {
     throw new Error('Delay minutes must be a non-negative number');
   }
   
-  if (!notification.message || typeof notification.message !== 'string' || notification.message.trim().length === 0) {
+  if (!notif.message || typeof notif.message !== 'string' || notif.message.trim().length === 0) {
     throw new Error('Message must be a non-empty string');
   }
   
-  if (notification.sentAt && !(notification.sentAt instanceof Date) && !Date.parse(notification.sentAt)) {
+  if (notif.sentAt && !(notif.sentAt instanceof Date) && !Date.parse(notif.sentAt)) {
     throw new Error('Sent at must be a valid date if provided');
   }
   
